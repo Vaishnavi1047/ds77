@@ -96,3 +96,142 @@ int main(int argc, char *argv[]) {
 
 mpicc program.c -o program
 mpirun -np 4 ./program
+
+
+//matirx multiply
+#include <stdio.h>
+#include <stdlib.h>
+#include <mpi.h>
+
+#define N 4
+
+void initialize_matrices(int A[N][N], int B[N][N]) {
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            A[i][j] = i + j;
+            B[i][j] = i * j;
+        }
+    }
+}
+
+void print_matrix(const char *name, int mat[N][N]) {
+    printf("%s:\n", name);
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            printf("%d ", mat[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+int main(int argc, char *argv[]) {
+    int rank, size;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    int A[N][N], B[N][N], C[N][N];
+
+    int local_rows = N / size;
+    int local_A[local_rows][N];
+    int local_C[local_rows][N];
+
+    if (rank == 0) {
+        initialize_matrices(A, B);
+        print_matrix("Matrix A", A);
+        print_matrix("Matrix B", B);
+    }
+
+    MPI_Bcast(B, N * N, MPI_INT, 0, MPI_COMM_WORLD);
+
+    MPI_Scatter(A, local_rows * N, MPI_INT,
+                local_A, local_rows * N, MPI_INT,
+                0, MPI_COMM_WORLD);
+
+    for (int i = 0; i < local_rows; i++) {
+        for (int j = 0; j < N; j++) {
+            local_C[i][j] = 0;
+            for (int k = 0; k < N; k++) {
+                local_C[i][j] += local_A[i][k] * B[k][j];
+            }
+        }
+    }
+
+    MPI_Gather(local_C, local_rows * N, MPI_INT,
+               C, local_rows * N, MPI_INT,
+               0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        print_matrix("Matrix C (Result)", C);
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+mpicc matrix_mpi.c -o matrix
+mpirun -np 2 ./matrix
+
+
+
+//maths
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <mpi.h>
+
+#define N 1000
+
+int main(int argc, char *argv[]) {
+    int rank, size;
+    int arr[N];
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    int local_n = N / size;
+    int local_arr[local_n];
+
+    double local_sum = 0.0, global_sum = 0.0;
+    double local_sq_sum = 0.0, global_sq_sum = 0.0;
+
+    // Step 1: root creates array
+    if (rank == 0) {
+        for (int i = 0; i < N; i++) {
+            arr[i] = i + 1;   // you can change values here
+        }
+    }
+
+    // Step 2: distribute array
+    MPI_Scatter(arr, local_n, MPI_INT,
+                local_arr, local_n, MPI_INT,
+                0, MPI_COMM_WORLD);
+
+    // Step 3: each process computes local sum + square sum
+    for (int i = 0; i < local_n; i++) {
+        local_sum += local_arr[i];
+        local_sq_sum += local_arr[i] * local_arr[i];
+    }
+
+    // Step 4: reduce to root
+    MPI_Reduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_sq_sum, &global_sq_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    // Step 5: root computes final results
+    if (rank == 0) {
+        double mean = global_sum / N;
+
+        double variance = (global_sq_sum / N) - (mean * mean);
+        double stddev = sqrt(variance);
+
+        printf("Global Sum = %.2f\n", global_sum);
+        printf("Average    = %.2f\n", mean);
+        printf("Std Dev    = %.2f\n", stddev);
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+mpicc stats_mpi.c -o stats -lm
+mpirun -np 4 ./stats
