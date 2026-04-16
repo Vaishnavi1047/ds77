@@ -1,0 +1,98 @@
+Socket
+
+//client code
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <arpa/inet.h>
+
+int main() {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    int number;
+    long long result;
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(8080);
+
+    inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr);
+
+    connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+
+    printf("Enter an integer: ");
+    scanf("%d", &number);
+
+    send(sock, &number, sizeof(number), 0);
+
+    read(sock, &result, sizeof(result));
+
+    printf("Factorial received from server: %lld\n", result);
+
+    close(sock);
+
+    return 0;
+}
+
+//server
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+long long calculate_factorial(int n) {
+    if (n < 0) return 0;
+
+    long long fact = 1;
+    for (int i = 1; i <= n; i++)
+        fact *= i;
+
+    return fact;
+}
+
+int main() {
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    int number;
+    long long result;
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(8080);
+
+    bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+
+    listen(server_fd, 3);
+
+    printf("Server is listening on port 8080...\n");
+
+    while (1) {
+        new_socket = accept(server_fd,
+                            (struct sockaddr *)&address,
+                            (socklen_t*)&addrlen);
+
+        read(new_socket, &number, sizeof(number));
+        printf("Received from client: %d\n", number);
+
+        result = calculate_factorial(number);
+
+        send(new_socket, &result, sizeof(result), 0);
+        printf("Factorial sent: %lld\n", result);
+
+        close(new_socket);
+    }
+
+    return 0;
+}
+
+gcc server.c -o server
+gcc client.c -o client
+
+./server
+./client
