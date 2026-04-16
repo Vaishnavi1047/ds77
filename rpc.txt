@@ -1,0 +1,369 @@
+//rpc
+
+grade.x
+struct student_input {
+    string username<50>;
+    string password<50>;
+    string name<100>;
+    int marks1;
+    int marks2;
+    int marks3;
+};
+
+struct grade_output {
+    string message<200>;
+    float average;
+    string grade<5>;
+};
+
+program GRADE_PROG {
+    version GRADE_VERS {
+        grade_output CALCULATE_GRADE(student_input) = 1;
+    } = 1;
+} = 0x23451111;
+
+Grade_server.c
+#include <stdio.h>
+#include <string.h>
+#include "grade.h"
+
+#define VALID_USER "admin"
+#define VALID_PASS "1234"
+#define KEY 10
+
+void encrypt_decrypt(char *input) {
+    for (int i = 0; input[i] != '\0'; i++) {
+        input[i] ^= KEY;
+    }
+}
+
+grade_output * calculate_grade_1_svc(student_input *input, struct svc_req *rqstp)
+{
+    static grade_output result;
+    static char message[200];
+    static char grade[5];
+
+    memset(&result, 0, sizeof(result));
+
+    if (strcmp(input->username, VALID_USER) != 0 ||
+        strcmp(input->password, VALID_PASS) != 0) {
+
+        strcpy(message, "Authentication Failed");
+        result.message = message;
+        result.average = 0;
+        strcpy(grade, "NA");
+        result.grade = grade;
+        return &result;
+    }
+
+    if (input->marks1 < 0 || input->marks2 < 0 || input->marks3 < 0) {
+        strcpy(message, "Invalid Marks");
+        result.message = message;
+        result.average = 0;
+        strcpy(grade, "NA");
+        result.grade = grade;
+        return &result;
+    }
+
+    float avg = (input->marks1 + input->marks2 + input->marks3) / 3.0;
+    result.average = avg;
+
+    if (avg >= 90) strcpy(grade, "A+");
+    else if (avg >= 75) strcpy(grade, "A");
+    else if (avg >= 60) strcpy(grade, "B");
+    else if (avg >= 50) strcpy(grade, "C");
+    else strcpy(grade, "F");
+
+    sprintf(message, "Grade Calculated Successfully for %s", input->name);
+
+    encrypt_decrypt(message);
+
+    result.message = message;
+    result.grade = grade;
+
+    return &result;
+}
+
+
+//Grade_client.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "grade.h"
+
+#define KEY 10
+
+void encrypt_decrypt(char *input) {
+    for (int i = 0; input[i] != '\0'; i++) {
+        input[i] ^= KEY;
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    CLIENT *clnt;
+    student_input input;
+    grade_output *result;
+
+    if (argc != 2) {
+        printf("Usage: %s <server_host>\n", argv[0]);
+        exit(1);
+    }
+
+    clnt = clnt_create(argv[1], GRADE_PROG, GRADE_VERS, "udp");
+
+    if (clnt == NULL) {
+        clnt_pcreateerror(argv[1]);
+        exit(1);
+    }
+
+    input.username = (char *)malloc(50);
+    input.password = (char *)malloc(50);
+    input.name = (char *)malloc(100);
+
+    if (!input.username || !input.password || !input.name) {
+        printf("Memory allocation failed\n");
+        exit(1);
+    }
+
+    printf("Username: ");
+    scanf("%49s", input.username);
+
+    printf("Password: ");
+    scanf("%49s", input.password);
+
+    printf("Student Name: ");
+    scanf("%99s", input.name);
+
+    printf("Marks 1: ");
+    scanf("%d", &input.marks1);
+
+    printf("Marks 2: ");
+    scanf("%d", &input.marks2);
+
+    printf("Marks 3: ");
+    scanf("%d", &input.marks3);
+
+    result = calculate_grade_1(&input, clnt);
+
+    if (result == NULL) {
+        clnt_perror(clnt, "Call failed");
+        exit(1);
+    }
+
+    encrypt_decrypt(result->message);
+
+    printf("\nServer Response: %s\n", result->message);
+    printf("Average: %.2f\n", result->average);
+    printf("Grade: %s\n", result->grade);
+
+    free(input.username);
+    free(input.password);
+    free(input.name);
+
+    clnt_destroy(clnt);
+
+    return 0;
+}
+
+rpcgen -C grade.x
+
+gcc Grade_server.c grade_svc.c grade_xdr.c -o server -lnsl
+gcc Grade_client.c grade_clnt.c grade_xdr.c -o client -lnsl
+
+./server
+./client 127.0.0.1
+
+
+//generic
+basic.x
+struct input_data {
+    int a;
+    int b;
+    string str<100>;
+};
+
+struct output_data {
+    int result;
+    string message<200>;
+};
+
+program BASIC_PROG {
+    version BASIC_VERS {
+        output_data OPERATION(input_data) = 1;
+    } = 1;
+} = 0x23451234;
+
+server.c
+#include <stdio.h>
+#include <string.h>
+#include "basic.h"
+
+output_data * operation_1_svc(input_data *input, struct svc_req *rqstp)
+{
+    static output_data result;
+    static char message[200];
+
+    memset(&result, 0, sizeof(result));
+
+    // Sum of two numbers
+    result.result = input->a + input->b;
+
+    // String manipulation (uncomment if needed)
+    /*
+    for (int i = 0; input->str[i]; i++) {
+        if (input->str[i] >= 'a' && input->str[i] <= 'z')
+            input->str[i] = input->str[i] - 32;
+    }
+    */
+    //str len result.result = strlen(input->str);
+    sprintf(message, "Operation Done. Result = %d", result.result);
+
+    result.message = message;
+
+    return &result;
+}
+
+//client.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "basic.h"
+
+int main(int argc, char *argv[])
+{
+    CLIENT *clnt;
+    input_data input;
+    output_data *result;
+
+    if (argc != 2) {
+        printf("Usage: %s <server_host>\n", argv[0]);
+        exit(1);
+    }
+
+    clnt = clnt_create(argv[1], BASIC_PROG, BASIC_VERS, "udp");
+
+    if (clnt == NULL) {
+        clnt_pcreateerror(argv[1]);
+        exit(1);
+    }
+
+    input.str = (char *)malloc(100);
+
+    printf("Enter number 1: ");
+    scanf("%d", &input.a);
+
+    printf("Enter number 2: ");
+    scanf("%d", &input.b);
+
+    printf("Enter string: ");
+    scanf("%s", input.str);
+
+    result = operation_1(&input, clnt);
+
+    if (result == NULL) {
+        clnt_perror(clnt, "Call failed");
+        exit(1);
+    }
+
+    printf("Result: %d\n", result->result);
+    printf("Message: %s\n", result->message);
+
+    free(input.str);
+    clnt_destroy(clnt);
+
+    return 0;
+}
+
+rpcgen -C basic.x
+
+gcc server.c basic_svc.c basic_xdr.c -o server -lnsl
+gcc client.c basic_clnt.c basic_xdr.c -o client -lnsl
+
+./server
+./client 127.0.0.1
+
+
+//prime
+struct output_data {
+    int fib_count;
+    int prime_count;
+};
+
+program FIB_PROG {
+    version FIB_VERS {
+        output_data CALCULATE() = 1;
+    } = 1;
+} = 0x23451235;
+
+//server
+#include <stdio.h>
+#include "fibprime.h"
+
+int isPrime(int n) {
+    if (n < 2) return 0;
+    for (int i = 2; i*i <= n; i++) {
+        if (n % i == 0) return 0;
+    }
+    return 1;
+}
+
+output_data * calculate_1_svc(void *argp, struct svc_req *rqstp)
+{
+    static output_data result;
+
+    int a = 0, b = 1, c;
+    int prime_count = 0, fib_count = 0;
+
+    while (b <= 10000) {
+        fib_count++;
+
+        if (isPrime(b))
+            prime_count++;
+
+        c = a + b;
+        a = b;
+        b = c;
+    }
+
+    result.fib_count = fib_count;
+    result.prime_count = prime_count;
+
+    return &result;
+}
+
+//client 
+#include <stdio.h>
+#include <stdlib.h>
+#include "fibprime.h"
+
+int main(int argc, char *argv[])
+{
+    CLIENT *clnt;
+    output_data *result;
+
+    if (argc != 2) {
+        printf("Usage: %s <server_host>\n", argv[0]);
+        exit(1);
+    }
+
+    clnt = clnt_create(argv[1], FIB_PROG, FIB_VERS, "udp");
+
+    if (clnt == NULL) {
+        clnt_pcreateerror(argv[1]);
+        exit(1);
+    }
+
+    result = calculate_1(NULL, clnt);
+
+    if (result == NULL) {
+        clnt_perror(clnt, "Call failed");
+        exit(1);
+    }
+
+    printf("Total Fibonacci Numbers (<=10000): %d\n", result->fib_count);
+    printf("Prime Fibonacci Count: %d\n", result->prime_count);
+
+    clnt_destroy(clnt);
+    return 0;
+}
