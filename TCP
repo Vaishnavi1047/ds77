@@ -1,4 +1,4 @@
-Socket
+Socket tcp
 
 //Server code
 #include <stdio.h>
