@@ -363,3 +363,67 @@ closedir(d);
 return 0;
 }
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <pwd.h>
+typedef struct {
+char filename[256];
+char owner[256];
+long size;
+} FileMap;
+int map_directory(FileMap *results) {
+DIR *d;
+struct dirent *dir;
+struct stat st;
+int count = 0;
+d = opendir(".");
+if (d) {
+while ((dir = readdir(d)) != NULL) {
+// Skip directories "." and ".."
+if (stat(dir->d_name, &st) == 0 && S_ISREG(st.st_mode)) {
+strcpy(results[count].filename, dir->d_name);
+// Get owner name from UID
+struct passwd *pw = getpwuid(st.st_uid);
+strcpy(results[count].owner, pw ? pw->pw_name : "unknown");
+results[count].size = st.st_size;
+count++;
+}
+}
+closedir(d);
+}
+return count;
+}
+void reduce_max_size(FileMap *list, int total) {
+if (total == 0) return;
+// 1. Finding the Maximum Size
+long max_size = 0;
+for (int i = 0; i < total; i++) {
+if (list[i].size > max_size) {
+max_size = list[i].size;
+}
+}
+// 2. Reduce/Filter: Print users owning files of that size
+printf("Maximum File Size: %ld bytes\n", max_size);
+printf("Owners of these files:\n");
+printf("--------------------------\n");
+for (int i = 0; i < total; i++) {
+if (list[i].size == max_size) {
+printf("User: %-15s | File: %s\n", list[i].owner, list[i].filename);
+}
+}
+}
+int main() {
+FileMap intermediate_data[1024];
+// Step 1: Map
+int file_count = map_directory(intermediate_data);
+// Step 2: Reduce
+if (file_count > 0) {
+reduce_max_size(intermediate_data, file_count);
+} else {
+printf("No files found in the directory.\n");
+}
+return 0;
+}
