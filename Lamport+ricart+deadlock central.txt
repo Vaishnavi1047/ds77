@@ -1,0 +1,253 @@
+Lamport+ricart+deadlock central
+
+
+#Lamport
+
+#include<stdio.h>
+
+void display(int e1, int e2, int p1[], int p2[]){
+    printf("This is for process p1-> ");
+    for(int i=0; i<e1; i++){
+        printf("%d ", p1[i]);
+    }
+    printf("\n");
+
+    printf("This is for process p2-> ");
+    for(int i=0; i<e2; i++){
+        printf("%d ", p2[i]);
+    }
+    printf("\n");
+}
+
+int max(int a, int b){
+    if(a >= b) return a;
+    return b;
+}
+
+void lamport(int e1, int e2, int mat[5][3]){
+    int p1[e1];
+    int p2[e2];
+
+    for(int i=0; i<e1; i++){
+        p1[i] = i + 1;
+    }
+
+    for(int i=0; i<e2; i++){
+        p2[i] = i + 1;
+    }
+
+    for(int i=0; i<e1; i++){
+        for(int j=0; j<e2; j++){
+
+            if(mat[i][j] == 1){
+                p2[j] = max(p2[j], p1[i] + 1);
+
+                for(int k=j+1; k<e2; k++){
+                    p2[k] = max(p2[k], 1 + p2[k-1]);
+                }
+            }
+
+            else if(mat[i][j] == -1){
+                p1[i] = max(p1[i], p2[j] + 1);
+
+                for(int k=i+1; k<e1; k++){
+                    p1[k] = max(p1[k], 1 + p1[k-1]);
+                }
+            }
+        }
+    }
+
+    display(e1, e2, p1, p2);
+}
+
+int main(){
+    int e1 = 5;
+    int e2 = 3;
+
+    int m[5][3];
+    //i->j =1 else j->i=-1
+    m[0][0]=0; m[0][1]=0; m[0][2]=0;
+    m[1][0]=0; m[1][1]=0; m[1][2]=1;
+    m[2][0]=0; m[2][1]=0; m[2][2]=0;
+    m[3][0]=0; m[3][1]=0; m[3][2]=0;
+    m[4][0]=0; m[4][1]=-1; m[4][2]=0;
+
+    lamport(e1, e2, m);
+
+    return 0;
+}
+
+
+#Richart
+
+#include <stdio.h>
+
+#define N 3
+
+typedef struct {
+    int sender_id;
+    int vector_clock[N];
+} Message;
+
+typedef struct {
+    int node_id;
+    int vector_clock[N];
+} Node;
+
+int max(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+void init_node(Node *node, int id) {
+    node->node_id = id;
+    for (int i = 0; i < N; i++) {
+        node->vector_clock[i] = 0;
+    }
+}
+
+void receive_message(Node *receiver, Message msg) {
+    printf("Node %d received message from Node %d\n",
+           receiver->node_id, msg.sender_id);
+
+    for (int i = 0; i < N; i++) {
+        receiver->vector_clock[i] =
+            max(receiver->vector_clock[i], msg.vector_clock[i]);
+    }
+
+    receiver->vector_clock[receiver->node_id]++;
+
+    printf("Updated Vector Clock: [");
+    for (int i = 0; i < N; i++)
+        printf("%d%s", receiver->vector_clock[i],
+               (i == N - 1) ? "" : ", ");
+    printf("]\n\n");
+}
+
+void send_message(Node *sender, Node *receiver) {
+    sender->vector_clock[sender->node_id]++;
+
+    Message msg;
+    msg.sender_id = sender->node_id;
+
+    for (int i = 0; i < N; i++) {
+        msg.vector_clock[i] = sender->vector_clock[i];
+    }
+
+    receive_message(receiver, msg);
+}
+
+int main() {
+    Node nodes[N];
+
+    for (int i = 0; i < N; i++)
+        init_node(&nodes[i], i);
+
+    printf("--- Vector Clock Simulation ---\n\n");
+
+    send_message(&nodes[0], &nodes[1]);
+    send_message(&nodes[1], &nodes[2]);
+    send_message(&nodes[2], &nodes[0]);
+
+    printf("--- Final Vector Clocks ---\n");
+
+    for (int i = 0; i < N; i++) {
+        printf("Node %d: [", i);
+        for (int j = 0; j < N; j++)
+            printf("%d%s", nodes[i].vector_clock[j],
+                   (j == N - 1) ? "" : ", ");
+        printf("]\n");
+    }
+
+    return 0;
+}
+
+
+//centralised deadlock
+#include<stdio.h>
+#include<stdbool.h>
+
+#define MAX 10
+
+typedef struct {
+    int initiator;
+    int sender;
+    int receiver;
+} Probe;
+
+int n;
+int WFG[MAX][MAX];
+bool blocked[MAX];
+
+void send_probe(int initiator, int sender, int receiver);
+
+void receive_probe(Probe p) {
+    int i = p.initiator;
+    int j = p.sender;
+    int k = p.receiver;
+
+    if (!blocked[k]) {
+        printf("Process %d is active. Ignoring probe.\n", k);
+        return;
+    }
+
+    printf("Probe (%d, %d, %d) received\n", i, j, k);
+
+    if (k == i) {
+        printf("\nDeadlock detected involving process %d!\n", i);
+        return;
+    }
+
+    for (int m=0; m<n; m++) {
+        if (WFG[k][m]) {
+            send_probe(i, k, m);
+        }
+    }
+}
+
+void send_probe(int initiator, int sender, int receiver) {
+    Probe p;
+    p.initiator = initiator;
+    p.sender = sender;
+    p.receiver = receiver;
+
+    receive_probe(p);
+}
+
+void detect_deadlock(int initiator) {
+    printf("\nProcess %d initiates deadlock detection\n", initiator);
+
+    if (!blocked[initiator]) {
+        printf("Process is not blocked. No deadlock.\n");
+        return;
+    }
+
+    for (int j=0; j<n; j++) {
+        if (WFG[initiator][j]) {
+            send_probe(initiator, initiator, j);
+        }
+    }
+}
+
+int main() {
+    printf("Enter number of processes: ");
+    scanf("%d", &n);
+
+    printf("Enter Wait-For Graph (Adjacency Matrix):\n");
+
+    for (int i=0; i<n; i++) {
+        blocked[i] = true;
+
+        for (int j=0; j<n; j++) {
+            scanf("%d", &WFG[i][j]);
+        }
+    }
+
+    int initiator;
+
+    printf("Enter initiator process: ");
+    scanf("%d", &initiator);
+
+    detect_deadlock(initiator);
+
+    return 0;
+}
