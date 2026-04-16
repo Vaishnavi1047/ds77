@@ -162,3 +162,66 @@ int main() {
 
     return 0;
 }
+
+//mkfifo
+#include<stdio.h>
+#include<unistd.h>
+#include<string.h>
+#include<fcntl.h>
+#include<sys/stat.h>
+
+int main() {
+    char *myfifo = "/tmp/myfifo";
+    int fd, len;
+    char msg[50];
+    char str[128];
+    int pid;
+
+    mkfifo(myfifo, 0666);
+
+    pid = fork();
+
+    if(pid == -1) {
+        perror("fork");
+        return 1;
+    }
+
+    if(pid == 0) {
+        while(1) {
+            fd = open(myfifo, O_RDWR);
+
+            read(fd, msg, sizeof(msg));
+            printf("Child Received: %s\n", msg);
+
+            printf("Child Sent: ");
+            fgets(str, 128, stdin);
+
+            len = strlen(str);
+            str[len-1] = '\0';
+
+            write(fd, str, len+1);
+
+            close(fd);
+        }
+    }
+    else {
+        while(1) {
+            fd = open(myfifo, O_RDWR);
+
+            printf("Parent: ");
+            fgets(str, 128, stdin);
+
+            len = strlen(str);
+            str[len-1] = '\0';
+
+            write(fd, str, len+1);
+
+            read(fd, msg, sizeof(msg));
+            printf("Parent Received: %s\n", msg);
+
+            close(fd);
+        }
+    }
+
+    return 0;
+}
