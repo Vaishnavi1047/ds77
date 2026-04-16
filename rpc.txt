@@ -1,4 +1,75 @@
 //rpc
+//factorial
+rpc_prog.x
+program FACTORIAL_PROG {
+    version PROG_VERSION {
+        int factorial(int) = 1;
+    } = 1;
+} = 0x20000001;
+
+rpc_server.c
+#include <stdio.h>
+#include "rpc_prog.h"
+
+int * factorial_1_svc(int *input, struct svc_req *req)
+{
+    static int result;
+
+    result = 1;
+
+    for(int i = 1; i <= *input; i++)
+        result *= i;
+
+    printf("Factorial of %d = %d\n", *input, result);
+
+    return &result;
+}
+
+rpc_client.c
+#include <stdio.h>
+#include <stdlib.h>
+#include "rpc_prog.h"
+
+int main(int argc, char *argv[])
+{
+    CLIENT *client;
+    int number;
+    int *result;
+
+    if (argc != 3) {
+        printf("Usage: %s <server_host> <number>\n", argv[0]);
+        exit(1);
+    }
+
+    char *server_host = argv[1];
+    number = atoi(argv[2]);
+
+    client = clnt_create(server_host, FACTORIAL_PROG, PROG_VERSION, "udp");
+
+    if (client == NULL) {
+        clnt_pcreateerror(server_host);
+        exit(1);
+    }
+
+    result = factorial_1(&number, client);
+
+    if (result == NULL) {
+        clnt_perror(client, "RPC call failed");
+    } else {
+        printf("Factorial Result: %d\n", *result);
+    }
+
+    clnt_destroy(client);
+
+    return 0;
+}
+
+gcc rpc_server.c rpc_prog_svc.c rpc_prog_xdr.c -o server -lnsl
+gcc rpc_client.c rpc_prog_clnt.c rpc_prog_xdr.c -o client -lnsl
+./server
+./client 127.0.0.1 5
+
+
 
 grade.x
 struct student_input {
