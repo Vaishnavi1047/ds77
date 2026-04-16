@@ -141,6 +141,8 @@ int main(int argc, char *argv[]) {
 }
 gcc program.c -o program
 ./program input.txt
+filename.txt
+
 
 //READING FROM DIFF FILE
 #include <stdio.h>
@@ -341,3 +343,23 @@ int main() {
 
     return 0;
 }
+
+
+#include <stdio.h>
+#include <dirent.h>
+
+int main() {
+DIR *d;
+struct dirent *dir;
+d = opendir(".");
+if (d) {
+while ((dir = readdir(d)) != NULL) {
+printf("%s: ", dir->d_name);
+if(dir->d_type==DT_DIR) printf("It is directory\n");
+if(dir->d_type==DT_REG) printf("It is regular file\n");
+}
+closedir(d);
+}
+return 0;
+}
+
