@@ -1,0 +1,724 @@
+java codes
+
+ 
+Q1.)program for 2 TCP servers and load balancer.
+ 
+//tcp_server.c
+ 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <time.h>
+#define BUFFER_SIZE 1024
+int get_cpu_load() {
+return rand() % 100; // simulate CPU load (0-99)
+}
+void to_uppercase(char *str) {
+for (int i = 0; str[i]; i++) {
+str[i] = toupper(str[i]);
+}
+}
+int main(int argc, char *argv[]) {
+int server_fd, client_socket;
+struct sockaddr_in address;
+int addrlen = sizeof(address);
+char buffer[BUFFER_SIZE];
+if (argc != 2) {
+printf("Usage: %s <port>\n", argv[0]);
+return 1;
+}
+int port = atoi(argv[1]);
+srand(time(0));
+server_fd = socket(AF_INET, SOCK_STREAM, 0);
+address.sin_family = AF_INET;
+address.sin_addr.s_addr = INADDR_ANY;
+address.sin_port = htons(port);
+bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+listen(server_fd, 3);
+printf("TCP Server running on port %d...\n", port);
+while (1) {
+client_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
+memset(buffer, 0, BUFFER_SIZE);
+read(client_socket, buffer, BUFFER_SIZE);
+if (strcmp(buffer, "LOAD") == 0) {
+int load = get_cpu_load();
+sprintf(buffer, "%d", load);
+send(client_socket, buffer, strlen(buffer), 0);
+} else {
+to_uppercase(buffer);
+send(client_socket, buffer, strlen(buffer), 0);
+}
+close(client_socket);
+}
+return 0;
+}
+ 
+ 
+// load_balancer.c
+ 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#define BUFFER_SIZE 1024
+int get_server_load(int port) {
+int sock;
+struct sockaddr_in server;
+char buffer[BUFFER_SIZE];
+sock = socket(AF_INET, SOCK_STREAM, 0);
+server.sin_family = AF_INET;
+server.sin_port = htons(port);
+server.sin_addr.s_addr = inet_addr("127.0.0.1");
+connect(sock, (struct sockaddr *)&server, sizeof(server));
+strcpy(buffer, "LOAD");
+send(sock, buffer, strlen(buffer), 0);
+memset(buffer, 0, BUFFER_SIZE);
+read(sock, buffer, BUFFER_SIZE);
+close(sock);
+return atoi(buffer);
+}
+void send_to_server(int port, char *input, char *output) {
+int sock;
+struct sockaddr_in server;
+sock = socket(AF_INET, SOCK_STREAM, 0);
+server.sin_family = AF_INET;
+server.sin_port = htons(port);
+server.sin_addr.s_addr = inet_addr("127.0.0.1");
+connect(sock, (struct sockaddr *)&server, sizeof(server));
+send(sock, input, strlen(input), 0);
+memset(output, 0, BUFFER_SIZE);
+read(sock, output, BUFFER_SIZE);
+close(sock);
+}
+int main() {
+int server_fd, client_socket;
+struct sockaddr_in address;
+int addrlen = sizeof(address);
+char buffer[BUFFER_SIZE], result[BUFFER_SIZE];
+int server1_port = 5001;
+int server2_port = 5002;
+server_fd = socket(AF_INET, SOCK_STREAM, 0);
+address.sin_family = AF_INET;
+address.sin_addr.s_addr = INADDR_ANY;
+address.sin_port = htons(5000);
+bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+listen(server_fd, 3);
+printf("Load Balancer running on port 5000...\n");
+while (1) {
+client_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
+memset(buffer, 0, BUFFER_SIZE);
+read(client_socket, buffer, BUFFER_SIZE);
+int load1 = get_server_load(server1_port);
+int load2 = get_server_load(server2_port);
+printf("Server1 Load: %d, Server2 Load: %d\n", load1, load2);
+int selected_port = (load1 < load2) ? server1_port : server2_port;
+send_to_server(selected_port, buffer, result);
+send(client_socket, result, strlen(result), 0);
+close(client_socket);
+}
+return 0;
+}
+ 
+// client.c
+ 
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#define BUFFER_SIZE 1024
+int main() {
+int sock;
+struct sockaddr_in server;
+char buffer[BUFFER_SIZE];
+sock = socket(AF_INET, SOCK_STREAM, 0);
+server.sin_family = AF_INET;
+server.sin_port = htons(5000);
+server.sin_addr.s_addr = inet_addr("127.0.0.1");
+connect(sock, (struct sockaddr *)&server, sizeof(server));
+printf("Enter lowercase string: ");
+fgets(buffer, BUFFER_SIZE, stdin);
+send(sock, buffer, strlen(buffer), 0);
+memset(buffer, 0, BUFFER_SIZE);
+read(sock, buffer, BUFFER_SIZE);
+printf("Uppercase string: %s\n", buffer);
+close(sock);
+return 0;
+}
+ 
+ 
+Commands used :
+gcc tcp_server.c -o server
+gcc load_balancer.c -o lb
+gcc client.c -o client
+./server 5001
+./server 5002
+./lb
+ 
+ 
+ 
+Q2.program for TCP implementation in java.
+ 
+// TCPServer.java
+ 
+import java.io.*;
+import java.net.*;
+public class TCPServer {
+public static void main(String[] args) {
+try {
+ServerSocket serverSocket = new ServerSocket(5000);
+System.out.println("Server is running on port 5000...");
+while (true) {
+Socket socket = serverSocket.accept();
+System.out.println("Client connected!");
+BufferedReader input = new BufferedReader(
+new InputStreamReader(socket.getInputStream()));
+PrintWriter output = new PrintWriter(socket.getOutputStream(), true);
+String clientMessage = input.readLine();
+System.out.println("Received from client: " + clientMessage);
+// Convert to uppercase
+String upperCaseMessage = clientMessage.toUpperCase();
+// Send back to client
+output.println(upperCaseMessage);
+socket.close();
+}
+} catch (IOException e) {
+e.printStackTrace();
+}
+}
+}
+ 
+// TCPClient.java
+ 
+import java.io.*;
+import java.net.*;
+public class TCPClient {
+public static void main(String[] args) {
+try {
+Socket socket = new Socket("127.0.0.1", 5000);
+BufferedReader userInput = new BufferedReader(
+new InputStreamReader(System.in));
+BufferedReader input = new BufferedReader(
+new InputStreamReader(socket.getInputStream()));
+PrintWriter output = new PrintWriter(socket.getOutputStream(), true);
+System.out.print("Enter a lowercase string: ");
+String message = userInput.readLine();
+// Send to server
+output.println(message);
+// Receive from server
+String response = input.readLine();
+System.out.println("Uppercase string from server: " + response);
+socket.close();
+} catch (IOException e) {
+e.printStackTrace();
+}
+}
+}
+ 
+Commands:
+javac TCPServer.java
+javac TCPClient.java
+java TCPServer
+java TCPClient
+ 
+ 
+ 
+Ass9..
+ 
+Q1.)server and client using threads using Java threads.
+ 
+//Client.java
+ 
+ 
+import java.io.*;
+import java.net.*;
+import java.util.*;
+// Client class
+class Client {
+// driver code
+public static void main(String[] args)
+{
+ // establish a connection by providing host and port
+ // number
+ try (Socket socket = new Socket("localhost", 1234)) {
+ 
+ // writing to server
+ PrintWriter out = new PrintWriter(
+ socket.getOutputStream(), true);
+ // reading from server
+ BufferedReader in
+ = new BufferedReader(new InputStreamReader(
+ socket.getInputStream()));
+ // object of scanner class
+ Scanner sc = new Scanner(System.in);
+ String line = null;
+ while (!"exit".equalsIgnoreCase(line)) {
+ 
+ // reading from user
+ line = sc.nextLine();
+ // sending the user input to server
+ out.println(line);
+ out.flush();
+ // displaying server reply
+ System.out.println("Server replied "
+ + in.readLine());
+ }
+ 
+ // closing the scanner object
+ sc.close();
+ }
+ catch (IOException e) {
+ e.printStackTrace();
+ }
+}
+}
+ 
+ 
+//Server.java
+ 
+import java.io.*;
+import java.net.*;
+// Server class
+class Server {
+public static void main(String[] args)
+{
+ ServerSocket server = null;
+ try {
+ // server is listening on port 1234
+ server = new ServerSocket(1234);
+ server.setReuseAddress(true);
+ // running infinite loop for getting
+ // client request
+ while (true) {
+ // socket object to receive incoming client
+ // requests
+ Socket client = server.accept();
+ // Displaying that new client is connected
+ // to server
+ System.out.println("New client connected"
+ + client.getInetAddress()
+ .getHostAddress());
+ // create a new thread object
+ ClientHandler clientSock
+ = new ClientHandler(client);
+ // This thread will handle the client
+ // separately
+ new Thread(clientSock).start();
+ }
+ }
+ catch (IOException e) {
+ e.printStackTrace();
+ }
+ finally {
+ if (server != null) {
+ try {
+ server.close();
+ }
+ catch (IOException e) {
+ e.printStackTrace();
+ }
+ }
+ }
+}
+// ClientHandler class
+private static class ClientHandler implements Runnable {
+ private final Socket clientSocket;
+ // Constructor
+ public ClientHandler(Socket socket)
+ {
+ this.clientSocket = socket;
+ }
+ public void run()
+ {
+ PrintWriter out = null;
+ BufferedReader in = null;
+ try {
+ 
+ // get the outputstream of client
+ out = new PrintWriter(
+ clientSocket.getOutputStream(), true);
+ // get the inputstream of client
+ in = new BufferedReader(
+ new InputStreamReader(
+ clientSocket.getInputStream()));
+ String line;
+ while ((line = in.readLine()) != null) {
+ // writing the received message from
+ // client
+ System.out.printf(
+ " Sent from the client: %s\n",
+ line);
+ out.println(line);
+ }
+ }
+ catch (IOException e) {
+ e.printStackTrace();
+ }
+ finally {
+ try {
+ if (out != null) {
+ out.close();
+ }
+ if (in != null) {
+ in.close();
+ clientSocket.close();
+ }
+ }
+ catch (IOException e) {
+ e.printStackTrace();
+ }
+ }
+ }
+}
+}
+ 
+javac server.java  
+java server
+ 
+javac client.java
+java client
+ 
+ 
+ 
+Q2.)
+a. Suboptimal Heuristic Adaptive Centralized Dynamic Scheduler.
+ 
+import java.util.*;
+/* Node Information */
+class Node {
+String id;
+double cpu;
+int queue;
+double memory;
+Node(String id, double cpu, int queue, double memory) {
+ this.id = id;
+ this.cpu = cpu;
+ this.queue = queue;
+ this.memory = memory;
+}
+}
+ 
+/* Task Information */
+class Task {
+String id;
+double expectedTime;
+Task(String id, double expectedTime) {
+ this.id = id;
+ this.expectedTime = expectedTime;
+}
+}
+ 
+/* Central Scheduler */
+class Scheduler {
+private Map<String, Node> nodes = new HashMap<>();
+// Heuristic weights
+private double wCpu = 0.5;
+private double wQueue = 0.3;
+private double wMemory = 0.2;
+/* Update node status */
+public void updateNode(String id, double cpu, int queue, double memory) {
+ nodes.put(id, new Node(id, cpu, queue, memory));
+}
+ 
+/* Compute score */
+private double computeScore(Node n) {
+ return (wCpu * n.cpu) + (wQueue * n.queue) - (wMemory * n.memory);
+}
+/* Select best node */
+public Node selectNode() {
+ Node best = null;
+ double minScore = Double.MAX_VALUE;
+ for (Node n : nodes.values()) {
+ double score = computeScore(n);
+ if (score < minScore) {
+ minScore = score;
+ best = n;
+ }
+ }
+ return best;
+}
+/* Schedule task */
+public void schedule(Task t) {
+ Node n = selectNode();
+ if (n != null) {
+ System.out.println("Task " + t.id + " assigned to " + n.id);
+ } else {
+ System.out.println("No node available");
+ }
+}
+/* Adaptive weight adjustment */
+public void adapt(double actual, double expected) {
+ if (actual > expected) {
+ wCpu += 0.05; // Increase importance of CPU load
+ } else {
+ wCpu -= 0.05;
+ }
+ normalize();
+}
+/* Normalize weights */
+private void normalize() {
+ double total = wCpu + wQueue + wMemory;
+ wCpu /= total;
+ wQueue /= total;
+ wMemory /= total;
+}
+}
+/* Main Class */
+public class Heuristic {
+public static void main(String[] args) {
+ Scheduler s = new Scheduler();
+ // Node updates
+ s.updateNode("N1", 0.6, 4, 8);
+ s.updateNode("N2", 0.3, 2, 6);
+ s.updateNode("N3", 0.8, 6, 9);
+ // Tasks
+ Task t1 = new Task("T1", 5);
+ Task t2 = new Task("T2", 3);
+ // Scheduling
+ s.schedule(t1);
+ s.schedule(t2);
+ // Adaptation
+ s.adapt(6, 5);
+}
+}
+ 
+ 
+ii.) Mandatory Optimal One-Time Distributed Dynamic Scheduler
+import java.util.*;
+/* Node Class */
+class Node {
+String id;
+double currentLoad; // Current workload
+public Node(String id, double load) {
+ this.id = id;
+ this.currentLoad = load;
+}
+/* Calculate completion time */
+public double getCompletionTime(double taskTime) {
+ return currentLoad + taskTime;
+}
+}
+/* Task Class */
+class Task {
+String id;
+double executionTime;
+public Task(String id, double executionTime) {
+ this.id = id;
+ this.executionTime = executionTime;
+}
+}
+/* Distributed Scheduler */
+class DistributedScheduler {
+private List<Node> nodes;
+public DistributedScheduler(List<Node> nodes) {
+ this.nodes = nodes;
+}
+/* Select optimal node */
+public Node selectOptimalNode(Task task) {
+ Node bestNode = null;
+ double minTime = Double.MAX_VALUE;
+ for (Node n : nodes) {
+ double completionTime = n.getCompletionTime(task.executionTime);
+ if (completionTime < minTime) {
+ minTime = completionTime;
+ bestNode = n;
+ }
+ }
+ return bestNode;
+}
+/* Assign task */
+public void schedule(Task task) {
+ Node selected = selectOptimalNode(task);
+ if (selected != null) {
+ System.out.println("Task " + task.id + " assigned to " + selected.id);
+ // Update load (one-time assignment)
+ selected.currentLoad += task.executionTime;
+ } else {
+ System.out.println("No nodes available");
+ }
+}
+}
+/* Main Class */
+public class Opt_onetime {
+public static void main(String[] args) {
+ // Create nodes
+ List<Node> nodes = new ArrayList<>();
+ nodes.add(new Node("N1", 5));
+ nodes.add(new Node("N2", 3));
+ nodes.add(new Node("N3", 7));
+ DistributedScheduler scheduler = new DistributedScheduler(nodes);
+ // Create tasks
+ Task t1 = new Task("T1", 4);
+ Task t2 = new Task("T2", 2);
+ // Schedule tasks
+ scheduler.schedule(t1);
+ scheduler.schedule(t2);
+}
+}
+ 
+ 
+Ass10..
+ 
+Q1.) Client-Server architecture
+ 
+ChatServer.java
+ 
+import java.io.*;
+import java.net.*;
+import java.util.*;
+ 
+public class ChatServer {
+    // The port the server will listen on
+    private static final int PORT = 12345;
+    
+    // A synchronized set to keep track of all connected client output streams
+    private static Set<PrintWriter> clientWriters = Collections.synchronizedSet(new HashSet<>());
+ 
+    public static void main(String[] args) {
+        System.out.println("Chat Server is running on port " + PORT + "...");
+        
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            while (true) {
+                // Wait for a client to connect, then hand it off to a new thread
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
+                new ClientHandler(clientSocket).start();
+            }
+        } catch (IOException e) {
+            System.err.println("Server exception: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+ 
+    // Thread class to handle individual clients
+    private static class ClientHandler extends Thread {
+        private Socket socket;
+        private PrintWriter out;
+        private BufferedReader in;
+ 
+        public ClientHandler(Socket socket) {
+            this.socket = socket;
+        }
+ 
+        public void run() {
+            try {
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+ 
+                // Add the new client's writer to the broadcast list
+                clientWriters.add(out);
+ 
+                String message;
+                // Listen for messages from this specific client
+                while ((message = in.readLine()) != null) {
+                    System.out.println("Broadcast: " + message);
+                    // Broadcast the message to all clients
+                    synchronized (clientWriters) {
+                        for (PrintWriter writer : clientWriters) {
+                            writer.println(message);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                System.out.println("Client disconnected unexpectedly.");
+            } finally {
+                // When the client disconnects, remove them from the list and close the socket
+                if (out != null) {
+                    clientWriters.remove(out);
+                }
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}
+ 
+ 
+ 
+ChatClient.java
+ 
+ 
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+ 
+public class ChatClient {
+    private String serverAddress;
+    private int serverPort;
+ 
+    public ChatClient(String serverAddress, int serverPort) {
+        this.serverAddress = serverAddress;
+        this.serverPort = serverPort;
+    }
+ 
+    public void start() {
+        try {
+            Socket socket = new Socket(serverAddress, serverPort);
+            System.out.println("Connected to the chat server at " + serverAddress);
+ 
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            Scanner scanner = new Scanner(System.in);
+ 
+            System.out.print("Enter your username: ");
+            String userName = scanner.nextLine();
+ 
+            // Thread to read incoming messages from the server
+            Thread readThread = new Thread(() -> {
+                try {
+                    String incomingMessage;
+                    while ((incomingMessage = in.readLine()) != null) {
+                        System.out.println(incomingMessage);
+                    }
+                } catch (IOException e) {
+                    System.out.println("Disconnected from server.");
+                }
+            });
+            readThread.start();
+ 
+            // Main thread handles sending messages
+            out.println(">>> " + userName + " has joined the chat. <<<");
+            
+            while (true) {
+                String message = scanner.nextLine();
+                if (message.equalsIgnoreCase("/exit")) {
+                    out.println(">>> " + userName + " has left the chat. <<<");
+                    break;
+                }
+                out.println(userName + ": " + message);
+            }
+ 
+            socket.close();
+            System.exit(0);
+ 
+        } catch (IOException e) {
+            System.err.println("Could not connect to the server. Please check the IP address and make sure the server is running.");
+        }
+    }
+ 
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        System.out.println("=== Java Distributed Chat Client ===");
+        System.out.print("Enter server IP address (Press Enter for localhost): ");
+        String ip = sc.nextLine();
+        
+        if (ip.trim().isEmpty()) {
+            ip = "localhost";
+        }
+ 
+        ChatClient client = new ChatClient(ip, 12345);
+        client.start();
+    }
+}
+ 
+commands :
+javac ChatServer.java
+javac ChatClient.java
+ 
+ 
