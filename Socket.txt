@@ -1,0 +1,207 @@
+Socket
+
+//Server code
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+double get_cpu_usage() {
+    FILE *fp;
+    long long int user, nice, system, idle;
+    long long int total1, total2, idle1, idle2;
+
+    fp = fopen("/proc/stat", "r");
+    fscanf(fp, "cpu %lld %lld %lld %lld", &user, &nice, &system, &idle);
+    fclose(fp);
+
+    total1 = user + nice + system + idle;
+    idle1 = idle;
+
+    sleep(1);
+
+    fp = fopen("/proc/stat", "r");
+    fscanf(fp, "cpu %lld %lld %lld %lld", &user, &nice, &system, &idle);
+    fclose(fp);
+
+    total2 = user + nice + system + idle;
+    idle2 = idle;
+
+    return (1.0 - (double)(idle2 - idle1) / (total2 - total1)) * 100.0;
+}
+
+int main() {
+    int sockfd, clientfd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t len = sizeof(client_addr);
+    double cpu_load;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(8080);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    listen(sockfd, 1);
+
+    printf("Server waiting for connection...\n");
+
+    clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &len);
+
+    printf("Client connected successfully!\n");
+
+    cpu_load = get_cpu_usage();
+
+    write(clientfd, &cpu_load, sizeof(cpu_load));
+
+    close(clientfd);
+    close(sockfd);
+
+    return 0;
+}
+
+//client code
+#include <stdio.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int main() {
+    int sockfd;
+    struct sockaddr_in server_addr;
+    double cpu_load;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(8080);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0)
+        printf("Connected to server\n");
+    else {
+        perror("Connection failed");
+        return 1;
+    }
+
+    read(sockfd, &cpu_load, sizeof(cpu_load));
+
+    printf("CPU Load of Node B: %.2f%%\n", cpu_load);
+
+    close(sockfd);
+
+    return 0;
+}
+
+
+
+//server generic
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+
+int main() {
+    int sockfd, clientfd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t len = sizeof(client_addr);
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    listen(sockfd, 1);
+
+    printf("Server waiting...\n");
+
+    clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &len);
+
+    /*
+    // STRING PART
+    char buffer[1024];
+    read(clientfd, buffer, sizeof(buffer));
+
+    int i = 0;
+    while (buffer[i] != '\0') {
+        if (buffer[i] >= 'a' && buffer[i] <= 'z')
+            buffer[i] -= 32;
+        i++;
+    }
+
+    write(clientfd, buffer, strlen(buffer) + 1);
+    */
+
+    // ARRAY PART
+    int arr[5];
+    read(clientfd, arr, sizeof(arr));
+
+    for (int i = 0; i < 5; i++)
+        arr[i] *= 2;
+
+    write(clientfd, arr, sizeof(arr));
+
+    close(clientfd);
+    close(sockfd);
+
+    return 0;
+}
+
+//client generic 
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+
+int main() {
+    int sockfd;
+    struct sockaddr_in server_addr;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+    /*
+    // STRING PART
+    char buffer[1024];
+
+    printf("Enter string: ");
+    fgets(buffer, sizeof(buffer), stdin);
+
+    write(sockfd, buffer, strlen(buffer) + 1);
+    read(sockfd, buffer, sizeof(buffer));
+
+    printf("Result from server: %s\n", buffer);
+    */
+
+    // ARRAY PART
+    int arr[5];
+
+    printf("Enter 5 integers:\n");
+    for (int i = 0; i < 5; i++)
+        scanf("%d", &arr[i]);
+
+    write(sockfd, arr, sizeof(arr));
+    read(sockfd, arr, sizeof(arr));
+
+    printf("Result array:\n");
+    for (int i = 0; i < 5; i++)
+        printf("%d ", arr[i]);
+
+    printf("\n");
+
+    close(sockfd);
+
+    return 0;
+}
