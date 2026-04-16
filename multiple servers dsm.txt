@@ -1,0 +1,217 @@
+multiple servers dsm
+
+//server.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <arpa/inet.h>
+
+typedef struct {
+    int readers;
+    int writer;
+    char data[256];
+} Page;
+
+Page pages[2];
+pthread_mutex_t lock;
+FILE *logfile;
+
+void log_event(char *msg)
+{
+    fprintf(logfile, "%s\n", msg);
+    fflush(logfile);
+}
+
+void *client_handler(void *socket_desc)
+{
+    int sock = *(int *)socket_desc;
+    free(socket_desc);
+
+    char buffer[256];
+    int client_id;
+
+    recv(sock, &client_id, sizeof(int), 0);
+
+    while (1)
+    {
+        int type, page;
+
+        if (recv(sock, &type, sizeof(int), 0) <= 0)
+            break;
+
+        recv(sock, &page, sizeof(int), 0);
+
+        pthread_mutex_lock(&lock);
+
+        if (type == 1) // READ
+        {
+            if (pages[page].writer == 0)
+            {
+                pages[page].readers++;
+
+                send(sock, pages[page].data, sizeof(pages[page].data), 0);
+
+                char logmsg[200];
+                sprintf(logmsg, "Client %d READ Page %d", client_id, page);
+                log_event(logmsg);
+
+                pages[page].readers--;
+            }
+            else
+            {
+                send(sock, "WRITE LOCKED", 13, 0);
+            }
+        }
+        else if (type == 2) // WRITE
+        {
+            if (pages[page].writer == 0 && pages[page].readers == 0)
+            {
+                pages[page].writer = 1;
+
+                recv(sock, pages[page].data, sizeof(pages[page].data), 0);
+
+                char logmsg[200];
+                sprintf(logmsg, "Client %d WROTE Page %d: %s",
+                        client_id, page, pages[page].data);
+                log_event(logmsg);
+
+                pages[page].writer = 0;
+            }
+            else
+            {
+                send(sock, "BUSY", 4, 0);
+            }
+        }
+
+        pthread_mutex_unlock(&lock);
+    }
+
+    close(sock);
+    return NULL;
+}
+
+int main()
+{
+    int server_fd, client_sock;
+    struct sockaddr_in server, client;
+    socklen_t c = sizeof(struct sockaddr_in);
+
+    logfile = fopen("server_log.txt", "w");
+
+    pthread_mutex_init(&lock, NULL);
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(8080);
+
+    bind(server_fd, (struct sockaddr *)&server, sizeof(server));
+
+    listen(server_fd, 5);
+
+    printf("DSM Server running...\n");
+
+    while ((client_sock = accept(server_fd, (struct sockaddr *)&client, &c)))
+    {
+        pthread_t thread;
+
+        int *new_sock = malloc(sizeof(int));
+        *new_sock = client_sock;
+
+        pthread_create(&thread, NULL, client_handler, (void *)new_sock);
+    }
+
+    fclose(logfile);
+    return 0;
+}
+
+//client
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+FILE *logfile;
+
+void log_event(char *msg)
+{
+    fprintf(logfile, "%s\n", msg);
+    fflush(logfile);
+}
+
+int main()
+{
+    int sock;
+    struct sockaddr_in server;
+
+    int client_id;
+
+    printf("Enter Client ID: ");
+    scanf("%d", &client_id);
+
+    logfile = fopen("client_log.txt", "a");
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server.sin_family = AF_INET;
+    server.sin_port = htons(8080);
+
+    connect(sock, (struct sockaddr *)&server, sizeof(server));
+
+    send(sock, &client_id, sizeof(int), 0);
+
+    while (1)
+    {
+        int type, page;
+        char data[256];
+
+        printf("\n1.READ 2.WRITE 3.EXIT\n");
+        scanf("%d", &type);
+
+        if (type == 3)
+            break;
+
+        printf("Enter Page (0 or 1): ");
+        scanf("%d", &page);
+
+        send(sock, &type, sizeof(int), 0);
+        send(sock, &page, sizeof(int), 0);
+
+        if (type == 1)
+        {
+            recv(sock, data, sizeof(data), 0);
+            printf("Page Data: %s\n", data);
+
+            char logmsg[200];
+            sprintf(logmsg, "READ Page %d -> %s", page, data);
+            log_event(logmsg);
+        }
+        else if (type == 2)
+        {
+            printf("Enter data to write: ");
+            scanf("%s", data);
+
+            send(sock, data, sizeof(data), 0);
+
+            char logmsg[200];
+            sprintf(logmsg, "WRITE Page %d -> %s", page, data);
+            log_event(logmsg);
+        }
+    }
+
+    close(sock);
+    fclose(logfile);
+
+    return 0;
+}
+
+gcc Server.c -o server -lpthread
+gcc Client.c -o client
+
+./server
+./client
