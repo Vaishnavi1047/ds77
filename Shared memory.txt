@@ -1,0 +1,216 @@
+Shared memory
+
+server
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <semaphore.h>
+#include <string.h>
+
+#define SHM_NAME "/my_shared_mem"
+
+typedef struct {
+    sem_t sem;
+    int counter;
+} shared_data_t;
+
+int main() {
+    int shm_fd;
+    shared_data_t *data;
+
+    shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("shm_open");
+        exit(EXIT_FAILURE);
+    }
+
+    if (ftruncate(shm_fd, sizeof(shared_data_t)) == -1) {
+        perror("ftruncate");
+        exit(EXIT_FAILURE);
+    }
+
+    data = mmap(NULL, sizeof(shared_data_t),
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED, shm_fd, 0);
+
+    if (data == MAP_FAILED) {
+        perror("mmap");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&data->sem, 1, 1) == -1) {
+        perror("sem_init");
+        exit(EXIT_FAILURE);
+    }
+
+    data->counter = 0;
+
+    printf("Server running...\n");
+
+    while (1) {
+        sem_wait(&data->sem);
+        data->counter++;
+        printf("Counter value: %d\n", data->counter);
+        sem_post(&data->sem);
+        sleep(1);
+    }
+
+    sem_destroy(&data->sem);
+    munmap(data, sizeof(shared_data_t));
+    shm_unlink(SHM_NAME);
+
+    return 0;
+}
+
+//client
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <semaphore.h>
+
+#define SHM_NAME "/my_shared_mem"
+
+typedef struct {
+    sem_t sem;
+    int counter;
+} shared_data_t;
+
+int main() {
+    int shm_fd;
+    shared_data_t *data;
+
+    shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("shm_open");
+        exit(EXIT_FAILURE);
+    }
+
+    data = mmap(NULL, sizeof(shared_data_t),
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED, shm_fd, 0);
+
+    if (data == MAP_FAILED) {
+        perror("mmap");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Client connected...\n");
+
+    while (1) {
+        sem_wait(&data->sem);
+        printf("Counter value read by client: %d\n", data->counter);
+        sem_post(&data->sem);
+        sleep(1);
+    }
+
+    munmap(data, sizeof(shared_data_t));
+    close(shm_fd);
+
+    return 0;
+}
+
+gcc server.c -o server -pthread -lrt
+gcc client.c -o client -pthread -lrt
+
+./server
+./client
+
+//generic template
+//server
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <semaphore.h>
+
+#define SHM_NAME "/shared_mem"
+
+typedef struct {
+    sem_t mutex;
+    int data[10];
+    int n;
+} shared_data_t;
+
+int main() {
+    int shm_fd;
+    shared_data_t *ptr;
+
+    shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_fd, sizeof(shared_data_t));
+
+    ptr = mmap(NULL, sizeof(shared_data_t),
+               PROT_READ | PROT_WRITE,
+               MAP_SHARED, shm_fd, 0);
+
+    sem_init(&ptr->mutex, 1, 1);
+
+    printf("Enter number of elements: ");
+    scanf("%d", &ptr->n);
+
+    printf("Enter elements:\n");
+    for(int i = 0; i < ptr->n; i++)
+        scanf("%d", &ptr->data[i]);
+
+    while (1) {
+        sem_wait(&ptr->mutex);
+
+        for(int i = 0; i < ptr->n; i++)
+            ptr->data[i] += 1;   // example operation
+
+        printf("Server updated array\n");
+
+        sem_post(&ptr->mutex);
+        sleep(2);
+    }
+
+    return 0;
+}
+
+//client 
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <semaphore.h>
+
+#define SHM_NAME "/shared_mem"
+
+typedef struct {
+    sem_t mutex;
+    int data[10];
+    int n;
+} shared_data_t;
+
+int main() {
+    int shm_fd;
+    shared_data_t *ptr;
+
+    shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+
+    ptr = mmap(NULL, sizeof(shared_data_t),
+               PROT_READ | PROT_WRITE,
+               MAP_SHARED, shm_fd, 0);
+
+    while (1) {
+        sem_wait(&ptr->mutex);
+
+        printf("Client reading array:\n");
+        for(int i = 0; i < ptr->n; i++)
+            printf("%d ", ptr->data[i]);
+
+        printf("\n");
+
+        sem_post(&ptr->mutex);
+        sleep(1);
+    }
+
+    return 0;
+}
